@@ -13,6 +13,10 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+.print-only {
+  display: none !important;
+}
+
 @media print {
   @page {
     size: A4;
@@ -32,9 +36,11 @@
     display: block !important;
   }
 
+  .print-inline {
+    display: inline !important;
+  }
+
   * {
-    background: transparent !important;
-    color: black !important;
     box-shadow: none !important;
     text-shadow: none !important;
   }
@@ -43,22 +49,19 @@
     background: white !important;
   }
 
-  .border {
-    border-color: #000 !important;
-  }
-
-  .text-red-600,
-  .text-red-500,
-  .text-amber-600,
-  .text-emerald-600,
-  .text-blue-600 {
-    color: black !important;
-  }
-
   .bg-red-50,
   .bg-emerald-50,
   .bg-amber-50,
-  .bg-blue-50 {
+  .bg-blue-50,
+  .bg-gray-50,
+  .bg-amber-50\/50,
+  .bg-gray-50\/50 {
     background: white !important;
+  }
+
+  .border-amber-200,
+  .border-amber-300,
+  .border-gray-200 {
+    border-color: #999 !important;
   }
 }

@@ -13,6 +13,7 @@ export interface OrderItem {
   serviceName: string;
   quantity: number;
   unitPrice: number;
+  originalPrice: number;
   subtotal: number;
 }
 
@@ -22,6 +23,8 @@ export interface Order {
   customerName: string;
   type: 'cash' | 'credit';
   totalAmount: number;
+  originalAmount: number;
+  discount: number;
   createdAt: string;
   remark: string;
   items: OrderItem[];

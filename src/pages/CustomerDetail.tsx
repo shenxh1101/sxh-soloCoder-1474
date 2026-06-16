@@ -11,7 +11,6 @@ import {
   X,
   Wallet,
   CreditCard,
-  ListOrdered,
   FileText,
 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -39,13 +38,13 @@ export default function CustomerDetail() {
   if (!customer) {
     return (
       <div className="text-center py-12">
-      <p className="text-gray-500">客户不存在</p>
-      <button
-        onClick={() => navigate('/customers')}
-        className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
-      >
-        返回客户列表
-      </button>
+        <p className="text-gray-500">客户不存在</p>
+        <button
+          onClick={() => navigate('/customers')}
+          className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
+        >
+          返回客户列表
+        </button>
       </div>
     );
   }
@@ -98,7 +97,7 @@ export default function CustomerDetail() {
     window.print();
   };
 
-  const renderTransactionRow = (tx: Transaction, index: number, totalCount: number) => {
+  const renderTransactionRow = (tx: Transaction, index: number, totalCount: number, showCashLabel = true) => {
     const isOrder = tx.type === 'order';
     const order = isOrder ? tx.data : null;
     const payment = !isOrder ? tx.data : null;
@@ -106,8 +105,8 @@ export default function CustomerDetail() {
 
     return (
       <div
-        key={`${tx.type}-${tx.data.id}`}
-        className="p-4 hover:bg-gray-50"
+        key={`${tx.type}-${tx.data.id}-${index}`}
+        className="p-4 hover:bg-gray-50 print:hover:bg-white"
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -131,7 +130,7 @@ export default function CustomerDetail() {
                 <p className="font-medium text-gray-900">
                   {!isOrder ? '还款' : '消费'}
                 </p>
-                {isOrder && (
+                {isOrder && showCashLabel && (
                   order!.type === 'cash' ? (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-medium rounded-full">
                       <Wallet className="w-3 h-3" />
@@ -144,17 +143,31 @@ export default function CustomerDetail() {
                     </span>
                   )
                 )}
+                {isOrder && !showCashLabel && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-medium rounded-full">
+                    <CreditCard className="w-3 h-3" />
+                    挂账
+                  </span>
+                )}
               </div>
               {isOrder && (
                 <>
                   <p className="text-xs text-gray-500 mt-0.5">
                     {order!.items
-                      .map((item) => `${item.serviceName}×${item.quantity}`)
+                      .map((item) => {
+                        const hasDiscount = item.unitPrice !== item.originalPrice;
+                        return `${item.serviceName}×${item.quantity}${hasDiscount ? ` (¥${item.unitPrice}/张)` : ''}`;
+                      })
                       .join('，')}
                   </p>
-                  {(order!.remark || payment?.remark) && (
+                  {order!.discount < 100 && (
+                    <p className="text-xs text-orange-500 mt-0.5">
+                      整单{order!.discount}折
+                    </p>
+                  )}
+                  {order!.remark && (
                     <p className="text-xs text-gray-400 mt-0.5">
-                      备注：{order!.remark || payment?.remark}
+                      备注：{order!.remark}
                     </p>
                   )}
                 </>
@@ -191,7 +204,7 @@ export default function CustomerDetail() {
             {isCreditOrder && (
               <p className="text-xs text-red-500 mt-0.5">计入欠款</p>
             )}
-            {isOrder && !isCreditOrder && (
+            {isOrder && !isCreditOrder && showCashLabel && (
               <p className="text-xs text-gray-400 mt-0.5">已收现</p>
             )}
             {!isOrder && (
@@ -199,7 +212,7 @@ export default function CustomerDetail() {
             )}
           </div>
         </div>
-        {index === totalCount - 1 && (
+        {index === totalCount - 1 && !showCashLabel && (
           <div className="print-only mt-4 pt-4 border-t-2 border-gray-900">
             <div className="flex justify-between text-lg font-bold">
               <span>当前欠款余额</span>
@@ -255,65 +268,44 @@ export default function CustomerDetail() {
         </div>
       </div>
 
-      <div className="print-only hidden">
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold">客户对账单</h1>
-          <p className="text-gray-600 mt-2">
-            客户名称：{customer.name} | 联系电话：{customer.phone || '-'}
-          </p>
-          <p className="text-gray-600">
-            打印日期：{format(new Date(), 'yyyy年MM月dd日', { locale: zhCN })}
-          </p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <p className="text-xs text-gray-500">累计消费</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1.5">
-            ¥{totalOrders.toFixed(2)}
-          </p>
-        </div>
-        <div className="bg-emerald-50 rounded-xl border border-emerald-200 p-5">
-          <p className="text-xs text-emerald-700">现金结算</p>
-          <p className="text-2xl font-bold text-emerald-700 mt-1.5">
-            ¥{totalCash.toFixed(2)}
-          </p>
-        </div>
-        <div className="bg-amber-50 rounded-xl border border-amber-200 p-5">
-          <p className="text-xs text-amber-700">累计挂账</p>
-          <p className="text-2xl font-bold text-amber-700 mt-1.5">
-            ¥{totalCredit.toFixed(2)}
-          </p>
-        </div>
-        <div className="bg-blue-50 rounded-xl border border-blue-200 p-5">
-          <p className="text-xs text-blue-700">累计还款</p>
-          <p className="text-2xl font-bold text-blue-700 mt-1.5">
-            ¥{totalPaid.toFixed(2)}
-          </p>
-        </div>
-        <div className="bg-red-50 rounded-xl border border-red-200 p-5 md:col-span-1 col-span-2">
-          <p className="text-xs text-red-700">当前欠款</p>
-          <p className="text-2xl font-bold text-red-700 mt-1.5">
-            ¥{customer.debt.toFixed(2)}
-          </p>
+      <div className="no-print">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <p className="text-xs text-gray-500">累计消费</p>
+            <p className="text-2xl font-bold text-gray-900 mt-1.5">
+              ¥{totalOrders.toFixed(2)}
+            </p>
+          </div>
+          <div className="bg-emerald-50 rounded-xl border border-emerald-200 p-5">
+            <p className="text-xs text-emerald-700">现金结算</p>
+            <p className="text-2xl font-bold text-emerald-700 mt-1.5">
+              ¥{totalCash.toFixed(2)}
+            </p>
+          </div>
+          <div className="bg-amber-50 rounded-xl border border-amber-200 p-5">
+            <p className="text-xs text-amber-700">累计挂账</p>
+            <p className="text-2xl font-bold text-amber-700 mt-1.5">
+              ¥{totalCredit.toFixed(2)}
+            </p>
+          </div>
+          <div className="bg-blue-50 rounded-xl border border-blue-200 p-5">
+            <p className="text-xs text-blue-700">累计还款</p>
+            <p className="text-2xl font-bold text-blue-700 mt-1.5">
+              ¥{totalPaid.toFixed(2)}
+            </p>
+          </div>
+          <div className="bg-red-50 rounded-xl border border-red-200 p-5 md:col-span-1 col-span-2">
+            <p className="text-xs text-red-700">当前欠款</p>
+            <p className="text-2xl font-bold text-red-700 mt-1.5">
+              ¥{customer.debt.toFixed(2)}
+            </p>
+          </div>
         </div>
       </div>
 
       <div className="no-print">
-        <div className="inline-flex bg-white border border-gray-200 rounded-xl p-1 shadow-sm">
-          <button
-            className="px-5 py-2.5 rounded-lg flex items-center gap-2 font-medium bg-blue-600 text-white shadow-md"
-          >
-            <ListOrdered className="w-4 h-4" />
-            <span>全部交易记录</span>
-          </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="p-5 border-b border-gray-200 bg-gray-50/50 no-print">
+          <div className="p-5 border-b border-gray-200 bg-gray-50/50">
             <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
               <FileText className="w-5 h-5 text-blue-500" />
               全部交易记录（含现金）
@@ -322,15 +314,10 @@ export default function CustomerDetail() {
               </span>
             </h3>
           </div>
-          <div className="print-only p-4 border-b border-gray-200">
-            <h3 className="text-base font-semibold">
-              全部交易记录（共 {allTransactions.length} 笔）
-            </h3>
-          </div>
           <div className="divide-y divide-gray-100">
             {allTransactions.length > 0 ? (
               allTransactions.map((tx, idx) =>
-                renderTransactionRow(tx, idx, allTransactions.length)
+                renderTransactionRow(tx, idx, allTransactions.length, true)
               )
             ) : (
               <div className="p-12 text-center text-gray-500">
@@ -339,47 +326,70 @@ export default function CustomerDetail() {
             )}
           </div>
         </div>
+      </div>
 
-        <div className="bg-white rounded-xl border-2 border-amber-200 overflow-hidden">
-          <div className="p-5 border-b border-amber-200 bg-amber-50/70">
-            <h3 className="text-base font-semibold text-amber-900 flex items-center gap-2">
-              <CreditCard className="w-5 h-5 text-amber-600" />
-              挂账对账单（欠款明细）
-              <span className="ml-auto text-sm font-normal text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
-                打印用此表
-              </span>
-            </h3>
-            <p className="text-xs text-amber-700 mt-1">
-              仅包含挂账消费和还款记录，用于核对欠款金额
-            </p>
+      <div className="bg-white rounded-xl border-2 border-amber-200 overflow-hidden" id="credit-statement">
+        <div className="print-only mb-6">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold">客户挂账对账单</h1>
+            <div className="mt-3 space-y-1 text-base">
+              <p>客户名称：<span className="font-semibold">{customer.name}</span></p>
+              <p>联系电话：{customer.phone || '-'}</p>
+              <p>打印日期：{format(new Date(), 'yyyy年MM月dd日', { locale: zhCN })}</p>
+            </div>
           </div>
-          <div className="divide-y divide-gray-100">
-            {creditTransactions.length > 0 ? (
-              creditTransactions.map((tx, idx) =>
-                renderTransactionRow(tx, idx, creditTransactions.length)
-              )
-            ) : (
-              <div className="p-12 text-center text-gray-500">
-                暂无挂账记录
-              </div>
-            )}
-          </div>
-          {creditTransactions.length > 0 && (
-            <div className="p-5 border-t-2 border-amber-300 bg-amber-50/50 space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">累计挂账消费</span>
-                <span className="font-semibold text-amber-700">¥{totalCredit.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">累计还款</span>
-                <span className="font-semibold text-emerald-700">-¥{totalPaid.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between items-center pt-2 border-t border-amber-200 mt-2">
-                <span className="text-base font-bold text-gray-800">欠款余额</span>
-                <span className="text-2xl font-bold text-red-600">¥{customer.debt.toFixed(2)}</span>
-              </div>
+        </div>
+
+        <div className="p-5 border-b border-amber-200 bg-amber-50/70 no-print">
+          <h3 className="text-base font-semibold text-amber-900 flex items-center gap-2">
+            <CreditCard className="w-5 h-5 text-amber-600" />
+            挂账对账单（欠款明细）
+            <span className="ml-auto text-sm font-normal text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+              打印用此表
+            </span>
+          </h3>
+          <p className="text-xs text-amber-700 mt-1">
+            仅包含挂账消费和还款记录，用于核对欠款金额
+          </p>
+        </div>
+        <div className="divide-y divide-gray-100">
+          {creditTransactions.length > 0 ? (
+            creditTransactions.map((tx, idx) =>
+              renderTransactionRow(tx, idx, creditTransactions.length, false)
+            )
+          ) : (
+            <div className="p-12 text-center text-gray-500">
+              暂无挂账记录
             </div>
           )}
+        </div>
+        {creditTransactions.length > 0 && (
+          <div className="p-5 border-t-2 border-amber-300 bg-amber-50/50 space-y-2">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-600">挂账消费合计</span>
+              <span className="font-semibold text-amber-700">+¥{totalCredit.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-600">已还合计</span>
+              <span className="font-semibold text-emerald-700">-¥{totalPaid.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between items-center pt-3 border-t-2 border-amber-300 mt-2">
+              <span className="text-lg font-bold text-gray-800">欠款余额</span>
+              <span className="text-2xl font-bold text-red-600">¥{customer.debt.toFixed(2)}</span>
+            </div>
+          </div>
+        )}
+        <div className="print-only p-6 border-t border-gray-300 space-y-6 mt-4">
+          <div className="grid grid-cols-2 gap-8 text-base">
+            <div>
+              <span className="font-medium">客户签字：</span>
+              <span className="inline-block w-32 border-b border-dashed border-black/40">&nbsp;</span>
+            </div>
+            <div>
+              <span className="font-medium">日期：</span>
+              <span className="inline-block w-32 border-b border-dashed border-black/40">&nbsp;</span>
+            </div>
+          </div>
         </div>
       </div>
 

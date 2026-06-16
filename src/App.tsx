@@ -7,6 +7,7 @@ import CustomerDetail from "@/pages/CustomerDetail";
 import Services from "@/pages/Services";
 import Templates from "@/pages/Templates";
 import Supplies from "@/pages/Supplies";
+import Statistics from "@/pages/Statistics";
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
           <Route path="/services" element={<Services />} />
           <Route path="/templates" element={<Templates />} />
           <Route path="/supplies" element={<Supplies />} />
+          <Route path="/statistics" element={<Statistics />} />
         </Route>
       </Routes>
     </Router>

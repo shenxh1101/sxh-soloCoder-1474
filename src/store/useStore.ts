@@ -65,6 +65,8 @@ interface AppState {
 
   getStats: (period: 'today' | 'week' | 'month') => Stats;
   getOrdersByPeriod: (period: 'today' | 'week' | 'month') => Order[];
+  getStatsByDateRange: (start: Date, end: Date) => Stats;
+  getOrdersByDateRange: (start: Date, end: Date) => Order[];
   getCustomerDebt: (customerId: string) => number;
 }
 
@@ -116,6 +118,8 @@ export const useStore = create<AppState>()(
           customerName: data.customerName,
           type: data.type,
           totalAmount: data.totalAmount,
+          originalAmount: data.originalAmount,
+          discount: data.discount,
           createdAt: new Date().toISOString(),
           remark: data.remark,
           items,
@@ -233,6 +237,38 @@ export const useStore = create<AppState>()(
 
         return get()
           .orders.filter((o) => new Date(o.createdAt) >= startOfPeriod)
+          .sort(
+            (a, b) =>
+              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
+      },
+
+      getStatsByDateRange: (start, end) => {
+        const endDate = new Date(end);
+        endDate.setHours(23, 59, 59, 999);
+        return get()
+          .orders.filter((o) => {
+            const d = new Date(o.createdAt);
+            return d >= start && d <= endDate;
+          })
+          .reduce(
+            (acc, o) => ({
+              total: acc.total + o.totalAmount,
+              cash: acc.cash + (o.type === 'cash' ? o.totalAmount : 0),
+              credit: acc.credit + (o.type === 'credit' ? o.totalAmount : 0),
+            }),
+            { total: 0, cash: 0, credit: 0 }
+          );
+      },
+
+      getOrdersByDateRange: (start, end) => {
+        const endDate = new Date(end);
+        endDate.setHours(23, 59, 59, 999);
+        return get()
+          .orders.filter((o) => {
+            const d = new Date(o.createdAt);
+            return d >= start && d <= endDate;
+          })
           .sort(
             (a, b) =>
               new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
