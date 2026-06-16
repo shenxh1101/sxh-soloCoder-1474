@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -12,6 +12,7 @@ import {
   Wallet,
   CreditCard,
   FileText,
+  ChevronDown,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
@@ -30,10 +31,32 @@ export default function CustomerDetail() {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentRemark, setPaymentRemark] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState<string>('all');
+  const [showMonthDropdown, setShowMonthDropdown] = useState(false);
 
   const customer = customers.find((c) => c.id === id);
   const customerOrders = orders.filter((o) => o.customerId === id);
   const customerPayments = payments.filter((p) => p.customerId === id);
+
+  const availableMonths = useMemo(() => {
+    const months = new Set<string>();
+    customerOrders.forEach((o) => {
+      const d = new Date(o.createdAt);
+      months.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+    });
+    customerPayments.forEach((p) => {
+      const d = new Date(p.createdAt);
+      months.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+    });
+    return Array.from(months).sort().reverse();
+  }, [customerOrders, customerPayments]);
+
+  const monthFilter = (dateStr: string) => {
+    if (selectedMonth === 'all') return true;
+    const d = new Date(dateStr);
+    const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    return month === selectedMonth;
+  };
 
   if (!customer) {
     return (
@@ -56,7 +79,7 @@ export default function CustomerDetail() {
     new Date(b.data.createdAt).getTime() - new Date(a.data.createdAt).getTime()
   );
 
-  const creditTransactions: Transaction[] = [
+  const creditTransactionsAll: Transaction[] = [
     ...customerOrders
       .filter((o) => o.type === 'credit')
       .map((o) => ({ type: 'order' as const, data: o })),
@@ -65,13 +88,23 @@ export default function CustomerDetail() {
     new Date(b.data.createdAt).getTime() - new Date(a.data.createdAt).getTime()
   );
 
-  const totalCredit = customerOrders
+  const creditTransactions: Transaction[] = creditTransactionsAll.filter((tx) =>
+    monthFilter(tx.data.createdAt)
+  );
+
+  const totalCreditAll = customerOrders
     .filter((o) => o.type === 'credit')
+    .reduce((sum, o) => sum + o.totalAmount, 0);
+  const totalCredit = customerOrders
+    .filter((o) => o.type === 'credit' && monthFilter(o.createdAt))
     .reduce((sum, o) => sum + o.totalAmount, 0);
   const totalCash = customerOrders
     .filter((o) => o.type === 'cash')
     .reduce((sum, o) => sum + o.totalAmount, 0);
-  const totalPaid = customerPayments.reduce((sum, p) => sum + p.amount, 0);
+  const totalPaidAll = customerPayments.reduce((sum, p) => sum + p.amount, 0);
+  const totalPaid = customerPayments
+    .filter((p) => monthFilter(p.createdAt))
+    .reduce((sum, p) => sum + p.amount, 0);
   const totalOrders = customerOrders.reduce((sum, o) => sum + o.totalAmount, 0);
 
   const handlePayment = () => {
@@ -225,6 +258,16 @@ export default function CustomerDetail() {
     );
   };
 
+  const formatMonthLabel = (month: string) => {
+    if (month === 'all') return '全部月份';
+    const [year, m] = month.split('-');
+    return `${year}年${parseInt(m)}月`;
+  };
+
+  const monthLabelForPrint = selectedMonth === 'all'
+    ? '全部'
+    : formatMonthLabel(selectedMonth);
+
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between no-print">
@@ -286,13 +329,13 @@ export default function CustomerDetail() {
           <div className="bg-amber-50 rounded-xl border border-amber-200 p-5">
             <p className="text-xs text-amber-700">累计挂账</p>
             <p className="text-2xl font-bold text-amber-700 mt-1.5">
-              ¥{totalCredit.toFixed(2)}
+              ¥{totalCreditAll.toFixed(2)}
             </p>
           </div>
           <div className="bg-blue-50 rounded-xl border border-blue-200 p-5">
             <p className="text-xs text-blue-700">累计还款</p>
             <p className="text-2xl font-bold text-blue-700 mt-1.5">
-              ¥{totalPaid.toFixed(2)}
+              ¥{totalPaidAll.toFixed(2)}
             </p>
           </div>
           <div className="bg-red-50 rounded-xl border border-red-200 p-5 md:col-span-1 col-span-2">
@@ -336,22 +379,74 @@ export default function CustomerDetail() {
             <div className="mt-3 space-y-1 text-base">
               <p>客户名称：<span className="font-semibold">{customer.name}</span></p>
               <p>联系电话：{customer.phone || '-'}</p>
+              <p>对账月份：{monthLabelForPrint}</p>
               <p>打印日期：{format(new Date(), 'yyyy年MM月dd日', { locale: zhCN })}</p>
             </div>
           </div>
         </div>
 
         <div className="p-5 border-b border-amber-200 bg-amber-50/70 no-print">
-          <h3 className="text-base font-semibold text-amber-900 flex items-center gap-2">
-            <CreditCard className="w-5 h-5 text-amber-600" />
-            挂账对账单（欠款明细）
-            <span className="ml-auto text-sm font-normal text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
-              打印用此表
-            </span>
-          </h3>
-          <p className="text-xs text-amber-700 mt-1">
-            仅包含挂账消费和还款记录，用于核对欠款金额
-          </p>
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <div>
+              <h3 className="text-base font-semibold text-amber-900 flex items-center gap-2">
+                <CreditCard className="w-5 h-5 text-amber-600" />
+                挂账对账单（欠款明细）
+                <span className="text-sm font-normal text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                  打印用此表
+                </span>
+              </h3>
+              <p className="text-xs text-amber-700 mt-1">
+                仅包含挂账消费和还款记录，用于核对欠款金额
+              </p>
+            </div>
+            {availableMonths.length > 0 && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowMonthDropdown(!showMonthDropdown)}
+                  className="px-4 py-2 bg-white border border-amber-300 rounded-lg flex items-center gap-2 hover:border-amber-400 transition-colors"
+                >
+                  <Calendar className="w-4 h-4 text-amber-600" />
+                  <span className="text-sm font-medium text-amber-900">
+                    {formatMonthLabel(selectedMonth)}
+                  </span>
+                  <ChevronDown className="w-4 h-4 text-amber-600" />
+                </button>
+                {showMonthDropdown && (
+                  <div className="absolute right-0 z-10 w-44 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-auto">
+                    <button
+                      onClick={() => {
+                        setSelectedMonth('all');
+                        setShowMonthDropdown(false);
+                      }}
+                      className={`w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 ${
+                        selectedMonth === 'all'
+                          ? 'bg-amber-50 text-amber-700 font-medium'
+                          : ''
+                      }`}
+                    >
+                      全部月份
+                    </button>
+                    {availableMonths.map((month) => (
+                      <button
+                        key={month}
+                        onClick={() => {
+                          setSelectedMonth(month);
+                          setShowMonthDropdown(false);
+                        }}
+                        className={`w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 ${
+                          selectedMonth === month
+                            ? 'bg-amber-50 text-amber-700 font-medium'
+                            : ''
+                        }`}
+                      >
+                        {formatMonthLabel(month)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
         <div className="divide-y divide-gray-100">
           {creditTransactions.length > 0 ? (
@@ -366,13 +461,27 @@ export default function CustomerDetail() {
         </div>
         <div className="p-5 border-t-2 border-amber-300 bg-amber-50/50 space-y-2">
           <div className="flex justify-between items-center">
-            <span className="text-sm text-gray-600">挂账消费合计</span>
+            <span className="text-sm text-gray-600">
+              {selectedMonth === 'all' ? '挂账消费合计' : `${monthLabelForPrint}挂账消费`}
+            </span>
             <span className="font-semibold text-amber-700">+¥{totalCredit.toFixed(2)}</span>
           </div>
           <div className="flex justify-between items-center">
-            <span className="text-sm text-gray-600">已还合计</span>
+            <span className="text-sm text-gray-600">
+              {selectedMonth === 'all' ? '已还合计' : `${monthLabelForPrint}已还`}
+            </span>
             <span className="font-semibold text-emerald-700">-¥{totalPaid.toFixed(2)}</span>
           </div>
+          {selectedMonth !== 'all' && (
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-600">{monthLabelForPrint}欠款变动</span>
+              <span className={`font-semibold ${
+                totalCredit - totalPaid >= 0 ? 'text-amber-700' : 'text-emerald-700'
+              }`}>
+                {totalCredit - totalPaid >= 0 ? '+' : ''}¥{(totalCredit - totalPaid).toFixed(2)}
+              </span>
+            </div>
+          )}
           <div className="flex justify-between items-center pt-3 border-t-2 border-amber-300 mt-2">
             <span className="text-lg font-bold text-gray-800">欠款余额</span>
             <span className="text-2xl font-bold text-red-600">¥{customer.debt.toFixed(2)}</span>

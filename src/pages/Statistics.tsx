@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Calendar,
   Printer,
@@ -9,6 +9,7 @@ import {
   Search,
   BarChart3,
   TrendingUp,
+  Users,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
@@ -24,8 +25,18 @@ interface ServiceStat {
   icon?: string;
 }
 
+interface CustomerStat {
+  customerId: string;
+  customerName: string;
+  cash: number;
+  credit: number;
+  payment: number;
+  currentDebt: number;
+  total: number;
+}
+
 export default function Statistics() {
-  const { getStatsByDateRange, getOrdersByDateRange, services } = useStore();
+  const { getStatsByDateRange, getOrdersByDateRange, services, customers, payments } = useStore();
 
   const today = format(new Date(), 'yyyy-MM-dd');
   const [startDate, setStartDate] = useState(
@@ -33,7 +44,7 @@ export default function Statistics() {
   );
   const [endDate, setEndDate] = useState(today);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'orders' | 'services'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'services' | 'customers'>('orders');
 
   const start = new Date(startDate);
   const end = new Date(endDate);
@@ -50,30 +61,100 @@ export default function Statistics() {
       )
     : orders;
 
-  const serviceStats: ServiceStat[] = services
-    .map((service) => {
-      let quantity = 0;
-      let amount = 0;
-      orders.forEach((order) => {
-        order.items.forEach((item) => {
-          if (item.serviceId === service.id) {
-            quantity += item.quantity;
-            amount += item.subtotal;
-          }
+  const serviceStats: ServiceStat[] = useMemo(() => {
+    return services
+      .map((service) => {
+        let quantity = 0;
+        let amount = 0;
+        orders.forEach((order) => {
+          order.items.forEach((item) => {
+            if (item.serviceId === service.id) {
+              quantity += item.quantity;
+              amount += item.subtotal;
+            }
+          });
         });
-      });
-      return {
-        serviceId: service.id,
-        serviceName: service.name,
-        quantity,
-        amount,
-        icon: service.icon,
-      };
-    })
-    .filter((s) => s.amount > 0)
-    .sort((a, b) => b.amount - a.amount);
+        return {
+          serviceId: service.id,
+          serviceName: service.name,
+          quantity,
+          amount,
+          icon: service.icon,
+        };
+      })
+      .filter((s) => s.amount > 0)
+      .sort((a, b) => b.amount - a.amount);
+  }, [orders, services]);
+
+  const customerStats: CustomerStat[] = useMemo(() => {
+    const endDateFull = new Date(endDate);
+    endDateFull.setHours(23, 59, 59, 999);
+
+    const customerMap: Record<string, CustomerStat> = {};
+
+    orders.forEach((order) => {
+      if (!customerMap[order.customerId]) {
+        const customer = customers.find((c) => c.id === order.customerId);
+        customerMap[order.customerId] = {
+          customerId: order.customerId,
+          customerName: customer?.name || order.customerName,
+          cash: 0,
+          credit: 0,
+          payment: 0,
+          currentDebt: customer?.debt || 0,
+          total: 0,
+        };
+      }
+      if (order.type === 'cash') {
+        customerMap[order.customerId].cash += order.totalAmount;
+      } else {
+        customerMap[order.customerId].credit += order.totalAmount;
+      }
+      customerMap[order.customerId].total += order.totalAmount;
+    });
+
+    payments.forEach((payment) => {
+      const d = new Date(payment.createdAt);
+      if (d >= start && d <= endDateFull) {
+        if (!customerMap[payment.customerId]) {
+          const customer = customers.find((c) => c.id === payment.customerId);
+          customerMap[payment.customerId] = {
+            customerId: payment.customerId,
+            customerName: customer?.name || '未知客户',
+            cash: 0,
+            credit: 0,
+            payment: 0,
+            currentDebt: customer?.debt || 0,
+            total: 0,
+          };
+        }
+        customerMap[payment.customerId].payment += payment.amount;
+      }
+    });
+
+    customers.forEach((customer) => {
+      if (customer.id !== 'walk-in' && !customerMap[customer.id]) {
+        customerMap[customer.id] = {
+          customerId: customer.id,
+          customerName: customer.name,
+          cash: 0,
+          credit: 0,
+          payment: 0,
+          currentDebt: customer.debt,
+          total: 0,
+        };
+      }
+    });
+
+    return Object.values(customerMap)
+      .filter((c) => c.total > 0 || c.payment > 0 || c.currentDebt > 0)
+      .sort((a, b) => b.total - a.total);
+  }, [orders, payments, customers, startDate, endDate, start]);
 
   const totalServiceQuantity = serviceStats.reduce((sum, s) => sum + s.quantity, 0);
+  const totalCustomerCash = customerStats.reduce((sum, c) => sum + c.cash, 0);
+  const totalCustomerCredit = customerStats.reduce((sum, c) => sum + c.credit, 0);
+  const totalCustomerPayment = customerStats.reduce((sum, c) => sum + c.payment, 0);
 
   const handlePrint = () => {
     window.print();
@@ -121,7 +202,7 @@ export default function Statistics() {
       link.download = `经营统计_订单明细_${startDate}_${endDate}.csv`;
       link.click();
       URL.revokeObjectURL(link.href);
-    } else {
+    } else if (activeTab === 'services') {
       const headers = ['排名', '服务项目', '数量', '收入', '占收入比例'];
       const rows = serviceStats.map((s, idx) => [
         idx + 1,
@@ -147,6 +228,34 @@ export default function Statistics() {
       link.download = `经营统计_服务排行_${startDate}_${endDate}.csv`;
       link.click();
       URL.revokeObjectURL(link.href);
+    } else if (activeTab === 'customers') {
+      const headers = ['排名', '客户', '现金收入', '挂账金额', '还款金额', '总金额', '当前欠款'];
+      const rows = customerStats.map((c, idx) => [
+        idx + 1,
+        c.customerName,
+        c.cash.toFixed(2),
+        c.credit.toFixed(2),
+        c.payment.toFixed(2),
+        c.total.toFixed(2),
+        c.currentDebt.toFixed(2),
+      ]);
+
+      const summaryRows = [
+        [],
+        ['合计', '', totalCustomerCash.toFixed(2), totalCustomerCredit.toFixed(2), totalCustomerPayment.toFixed(2), stats.total.toFixed(2), ''],
+      ];
+
+      const csvContent = [headers, ...rows, ...summaryRows]
+        .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+        .join('\n');
+
+      const BOM = '\uFEFF';
+      const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `经营统计_客户排行_${startDate}_${endDate}.csv`;
+      link.click();
+      URL.revokeObjectURL(link.href);
     }
   };
 
@@ -165,6 +274,12 @@ export default function Statistics() {
     );
   };
 
+  const canExport = activeTab === 'orders'
+    ? filteredOrders.length > 0
+    : activeTab === 'services'
+    ? serviceStats.length > 0
+    : customerStats.length > 0;
+
   return (
     <div className="space-y-8">
       <div className="flex items-start justify-between no-print">
@@ -173,7 +288,7 @@ export default function Statistics() {
           <p className="text-gray-500 mt-1">按日期范围筛选查看经营数据</p>
         </div>
         <div className="flex items-center gap-3">
-          {filteredOrders.length > 0 && (
+          {canExport && (
             <>
               <button
                 onClick={handleExportCSV}
@@ -315,6 +430,17 @@ export default function Statistics() {
             >
               <TrendingUp className="w-4 h-4" />
               服务排行
+            </button>
+            <button
+              onClick={() => setActiveTab('customers')}
+              className={`flex-1 px-6 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+                activeTab === 'customers'
+                  ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/30'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              客户排行
             </button>
           </div>
         </div>
@@ -519,6 +645,101 @@ export default function Statistics() {
             <div className="text-center py-12 text-gray-500 border border-dashed border-gray-200 rounded-xl">
               <TrendingUp className="w-12 h-12 text-gray-300 mx-auto mb-3" />
               <p>该日期范围内暂无服务数据</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'customers' && (
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <div className="flex items-center justify-between mb-4 no-print">
+            <h3 className="text-lg font-semibold text-gray-900">
+              客户贡献排行（共 {customerStats.length} 位）
+            </h3>
+          </div>
+
+          <div className="print-only mb-3">
+            <h3 className="text-lg font-semibold">客户贡献排行</h3>
+          </div>
+
+          {customerStats.length > 0 ? (
+            <div className="border border-gray-200 rounded-xl overflow-hidden">
+              <table className="w-full">
+                <thead className="bg-gray-50 print:bg-gray-100">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-16">排名</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">客户</th>
+                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">现金收入</th>
+                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">挂账金额</th>
+                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">还款金额</th>
+                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">总金额</th>
+                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">当前欠款</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {customerStats.map((c, idx) => (
+                    <tr key={c.customerId} className="hover:bg-gray-50 print:hover:bg-white">
+                      <td className="px-4 py-3 text-sm">
+                        <span className={`inline-flex w-7 h-7 items-center justify-center rounded-full text-xs font-bold ${
+                          idx === 0 ? 'bg-amber-100 text-amber-700' :
+                          idx === 1 ? 'bg-gray-200 text-gray-700' :
+                          idx === 2 ? 'bg-orange-100 text-orange-700' :
+                          'bg-gray-100 text-gray-600'
+                        }`}>
+                          {idx + 1}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm">
+                        <span className="font-medium text-gray-900">{c.customerName}</span>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-emerald-700 text-right font-medium">
+                        ¥{c.cash.toFixed(2)}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-amber-700 text-right font-medium">
+                        ¥{c.credit.toFixed(2)}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-blue-700 text-right font-medium">
+                        ¥{c.payment.toFixed(2)}
+                      </td>
+                      <td className="px-4 py-3 text-sm font-semibold text-gray-900 text-right">
+                        ¥{c.total.toFixed(2)}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-right">
+                        {c.currentDebt > 0 ? (
+                          <span className="font-medium text-red-600">¥{c.currentDebt.toFixed(2)}</span>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-gray-50 print:bg-gray-100 border-t-2 border-gray-200">
+                  <tr>
+                    <td colSpan={2} className="px-4 py-3 text-sm font-semibold text-gray-700">
+                      合计
+                    </td>
+                    <td className="px-4 py-3 text-sm font-semibold text-emerald-700 text-right">
+                      ¥{totalCustomerCash.toFixed(2)}
+                    </td>
+                    <td className="px-4 py-3 text-sm font-semibold text-amber-700 text-right">
+                      ¥{totalCustomerCredit.toFixed(2)}
+                    </td>
+                    <td className="px-4 py-3 text-sm font-semibold text-blue-700 text-right">
+                      ¥{totalCustomerPayment.toFixed(2)}
+                    </td>
+                    <td className="px-4 py-3 text-lg font-bold text-blue-600 text-right">
+                      ¥{stats.total.toFixed(2)}
+                    </td>
+                    <td></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          ) : (
+            <div className="text-center py-12 text-gray-500 border border-dashed border-gray-200 rounded-xl">
+              <Users className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+              <p>该日期范围内暂无客户数据</p>
             </div>
           )}
         </div>

@@ -1,12 +1,15 @@
 import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft,
   Calendar,
   Printer,
   ArrowDownLeft,
   User,
   ChevronDown,
   Download,
+  X,
+  FileText,
+  Eye,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
@@ -21,6 +24,7 @@ interface PaymentDetail {
 }
 
 export default function PaymentHistory() {
+  const navigate = useNavigate();
   const { payments, customers, orders } = useStore();
 
   const today = format(new Date(), 'yyyy-MM-dd');
@@ -30,6 +34,8 @@ export default function PaymentHistory() {
   const [endDate, setEndDate] = useState(today);
   const [selectedCustomerId, setSelectedCustomerId] = useState('all');
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [selectedDetail, setSelectedDetail] = useState<PaymentDetail | null>(null);
 
   const creditCustomers = customers.filter((c) => c.id !== 'walk-in');
 
@@ -141,6 +147,18 @@ export default function PaymentHistory() {
     link.download = `收款流水_${startDate}_${endDate}.csv`;
     link.click();
     URL.revokeObjectURL(link.href);
+  };
+
+  const openDetail = (detail: PaymentDetail) => {
+    setSelectedDetail(detail);
+    setShowDetailModal(true);
+  };
+
+  const goToCustomerStatement = () => {
+    if (selectedDetail?.customer) {
+      navigate(`/customers/${selectedDetail.customer.id}`);
+      setShowDetailModal(false);
+    }
   };
 
   const selectedCustomer = creditCustomers.find((c) => c.id === selectedCustomerId);
@@ -359,13 +377,65 @@ export default function PaymentHistory() {
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
                     备注
                   </th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 w-20 print:hidden">
+                    详情
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {paymentDetails.map((detail) => (
                   <tr
                     key={detail.payment.id}
-                    className="hover:bg-gray-50 print:hover:bg-white"
+                    className="hover:bg-gray-50 print:hover:bg-white cursor-pointer no-print"
+                    onClick={() => openDetail(detail)}
+                  >
+                    <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                      {format(
+                        new Date(detail.payment.createdAt),
+                        'yyyy-MM-dd HH:mm',
+                        { locale: zhCN }
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
+                          <ArrowDownLeft className="w-4 h-4 text-emerald-600" />
+                        </div>
+                        <span className="font-medium text-gray-900">
+                          {detail.customer?.name || '-'}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600 text-right">
+                      ¥{detail.balanceBefore.toFixed(2)}
+                    </td>
+                    <td className="px-4 py-3 text-sm font-semibold text-emerald-600 text-right">
+                      +¥{detail.payment.amount.toFixed(2)}
+                    </td>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900 text-right">
+                      ¥{detail.balanceAfter.toFixed(2)}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-500 max-w-xs truncate">
+                      {detail.payment.remark || '-'}
+                    </td>
+                    <td className="px-4 py-3 text-center print:hidden">
+                      <button
+                        className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                        title="查看详情"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openDetail(detail);
+                        }}
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {paymentDetails.map((detail) => (
+                  <tr
+                    key={`print-${detail.payment.id}`}
+                    className="hover:bg-white print-only"
                   >
                     <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
                       {format(
@@ -407,7 +477,7 @@ export default function PaymentHistory() {
                   <td className="px-4 py-3 text-lg font-bold text-emerald-600 text-right">
                     ¥{totalCollected.toFixed(2)}
                   </td>
-                  <td colSpan={2}></td>
+                  <td colSpan={3}></td>
                 </tr>
               </tfoot>
             </table>
@@ -419,6 +489,105 @@ export default function PaymentHistory() {
           </div>
         )}
       </div>
+
+      {showDetailModal && selectedDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center no-print">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setShowDetailModal(false)}
+          />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 mx-4">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center">
+                  <ArrowDownLeft className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">还款详情</h3>
+                  <p className="text-sm text-gray-500">
+                    {format(
+                      new Date(selectedDetail.payment.createdAt),
+                      'yyyy年MM月dd日 HH:mm',
+                      { locale: zhCN }
+                    )}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowDetailModal(false)}
+                className="text-gray-400 hover:text-gray-600 p-1 hover:bg-gray-100 rounded-md transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                    <User className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-blue-700">客户</p>
+                    <p className="font-semibold text-gray-900">
+                      {selectedDetail.customer?.name || '-'}
+                    </p>
+                    {selectedDetail.customer?.phone && (
+                      <p className="text-sm text-gray-500">
+                        {selectedDetail.customer.phone}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="p-4 bg-amber-50 rounded-xl border border-amber-100 text-center">
+                  <p className="text-xs text-amber-700">还款前欠款</p>
+                  <p className="text-xl font-bold text-amber-700 mt-1">
+                    ¥{selectedDetail.balanceBefore.toFixed(2)}
+                  </p>
+                </div>
+                <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100 text-center">
+                  <p className="text-xs text-emerald-700">本次收款</p>
+                  <p className="text-xl font-bold text-emerald-700 mt-1">
+                    ¥{selectedDetail.payment.amount.toFixed(2)}
+                  </p>
+                </div>
+                <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 text-center">
+                  <p className="text-xs text-gray-700">还款后欠款</p>
+                  <p className="text-xl font-bold text-gray-900 mt-1">
+                    ¥{selectedDetail.balanceAfter.toFixed(2)}
+                  </p>
+                </div>
+              </div>
+
+              {selectedDetail.payment.remark && (
+                <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
+                  <p className="text-sm text-gray-500 mb-1">备注</p>
+                  <p className="text-gray-900">{selectedDetail.payment.remark}</p>
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={goToCustomerStatement}
+                  className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center justify-center gap-2 transition-colors"
+                >
+                  <FileText className="w-4 h-4" />
+                  <span>查看客户对账单</span>
+                </button>
+                <button
+                  onClick={() => setShowDetailModal(false)}
+                  className="px-4 py-2.5 border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors"
+                >
+                  关闭
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
