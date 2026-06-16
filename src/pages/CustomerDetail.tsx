@@ -155,12 +155,13 @@ export default function CustomerDetail() {
                   <p className="text-xs text-gray-500 mt-0.5">
                     {order!.items
                       .map((item) => {
-                        const hasDiscount = item.unitPrice !== item.originalPrice;
+                        const originalPrice = item.originalPrice ?? item.unitPrice;
+                        const hasDiscount = item.unitPrice !== originalPrice;
                         return `${item.serviceName}×${item.quantity}${hasDiscount ? ` (¥${item.unitPrice}/张)` : ''}`;
                       })
                       .join('，')}
                   </p>
-                  {order!.discount < 100 && (
+                  {(order!.discount ?? 100) < 100 && (
                     <p className="text-xs text-orange-500 mt-0.5">
                       整单{order!.discount}折
                     </p>
@@ -363,22 +364,20 @@ export default function CustomerDetail() {
             </div>
           )}
         </div>
-        {creditTransactions.length > 0 && (
-          <div className="p-5 border-t-2 border-amber-300 bg-amber-50/50 space-y-2">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-600">挂账消费合计</span>
-              <span className="font-semibold text-amber-700">+¥{totalCredit.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-600">已还合计</span>
-              <span className="font-semibold text-emerald-700">-¥{totalPaid.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between items-center pt-3 border-t-2 border-amber-300 mt-2">
-              <span className="text-lg font-bold text-gray-800">欠款余额</span>
-              <span className="text-2xl font-bold text-red-600">¥{customer.debt.toFixed(2)}</span>
-            </div>
+        <div className="p-5 border-t-2 border-amber-300 bg-amber-50/50 space-y-2">
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-gray-600">挂账消费合计</span>
+            <span className="font-semibold text-amber-700">+¥{totalCredit.toFixed(2)}</span>
           </div>
-        )}
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-gray-600">已还合计</span>
+            <span className="font-semibold text-emerald-700">-¥{totalPaid.toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between items-center pt-3 border-t-2 border-amber-300 mt-2">
+            <span className="text-lg font-bold text-gray-800">欠款余额</span>
+            <span className="text-2xl font-bold text-red-600">¥{customer.debt.toFixed(2)}</span>
+          </div>
+        </div>
         <div className="print-only p-6 border-t border-gray-300 space-y-6 mt-4">
           <div className="grid grid-cols-2 gap-8 text-base">
             <div>

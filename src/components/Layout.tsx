@@ -8,12 +8,14 @@ import {
   AlertTriangle,
   Printer,
   BarChart3,
+  ArrowDownLeft,
 } from 'lucide-react';
 
 const navItems = [
   { path: '/', label: '首页', icon: LayoutDashboard },
   { path: '/billing', label: '记账', icon: Receipt },
   { path: '/customers', label: '客户管理', icon: Users },
+  { path: '/payments', label: '收款流水', icon: ArrowDownLeft },
   { path: '/statistics', label: '经营统计', icon: BarChart3 },
   { path: '/services', label: '服务价格', icon: Settings },
   { path: '/templates', label: '常用模板', icon: FileText },

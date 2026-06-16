@@ -177,7 +177,7 @@ export default function Dashboard() {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
                           {getOrderTypeBadge(order)}
-                          {order.discount < 100 && (
+                          {(order.discount ?? 100) < 100 && (
                             <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs font-medium rounded-full">
                               {order.discount}折
                             </span>
@@ -188,9 +188,9 @@ export default function Dashboard() {
                         <div className="text-sm font-semibold text-gray-900">
                           ¥{order.totalAmount.toFixed(2)}
                         </div>
-                        {order.discount < 100 && (
+                        {(order.discount ?? 100) < 100 && (
                           <div className="text-xs text-gray-400 line-through">
-                            ¥{order.originalAmount.toFixed(2)}
+                            ¥{(order.originalAmount ?? order.totalAmount).toFixed(2)}
                           </div>
                         )}
                       </td>

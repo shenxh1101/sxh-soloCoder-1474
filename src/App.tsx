@@ -8,6 +8,7 @@ import Services from "@/pages/Services";
 import Templates from "@/pages/Templates";
 import Supplies from "@/pages/Supplies";
 import Statistics from "@/pages/Statistics";
+import PaymentHistory from "@/pages/PaymentHistory";
 
 export default function App() {
   return (
@@ -22,6 +23,7 @@ export default function App() {
           <Route path="/templates" element={<Templates />} />
           <Route path="/supplies" element={<Supplies />} />
           <Route path="/statistics" element={<Statistics />} />
+          <Route path="/payments" element={<PaymentHistory />} />
         </Route>
       </Routes>
     </Router>
