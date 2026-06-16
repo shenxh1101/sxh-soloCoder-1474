@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Plus,
   Minus,
@@ -9,6 +9,7 @@ import {
   Wallet,
   CreditCard,
   ChevronDown,
+  CheckCircle,
 } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import type { OrderItem } from '@/types';
@@ -22,6 +23,7 @@ interface OrderItemForm {
 
 export default function Billing() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { customers, services, templates, addOrder, addTemplate } = useStore();
 
   const [customerId, setCustomerId] = useState('walk-in');
@@ -32,14 +34,32 @@ export default function Billing() {
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const [saveTemplateModal, setSaveTemplateModal] = useState(false);
   const [templateName, setTemplateName] = useState('');
+  const [appliedTemplateName, setAppliedTemplateName] = useState<string | null>(null);
 
   const selectedCustomer = customers.find((c) => c.id === customerId);
   const customerTemplates = templates.filter((t) => t.customerId === customerId || t.customerId === 'walk-in');
+  const allTemplates = templates;
 
   const totalAmount = items.reduce(
     (sum, item) => sum + item.quantity * item.unitPrice,
     0
   );
+
+  useEffect(() => {
+    const state = location.state as { templateId?: string } | null;
+    if (state?.templateId) {
+      const template = templates.find((t) => t.id === state.templateId);
+      if (template) {
+        applyTemplate(template.id, true);
+      }
+    }
+  }, [location.state, templates]);
+
+  useEffect(() => {
+    if (customerId === 'walk-in' && paymentType === 'credit') {
+      setPaymentType('cash');
+    }
+  }, [customerId, paymentType]);
 
   const addServiceItem = (serviceId: string) => {
     const service = services.find((s) => s.id === serviceId);
@@ -65,6 +85,7 @@ export default function Billing() {
         },
       ]);
     }
+    setAppliedTemplateName(null);
   };
 
   const updateQuantity = (serviceId: string, delta: number) => {
@@ -77,9 +98,10 @@ export default function Billing() {
         )
         .filter((i) => i.quantity > 0)
     );
+    setAppliedTemplateName(null);
   };
 
-  const applyTemplate = (templateId: string) => {
+  const applyTemplate = (templateId: string, keepPaymentType = false) => {
     const template = templates.find((t) => t.id === templateId);
     if (!template) return;
 
@@ -92,6 +114,20 @@ export default function Billing() {
         unitPrice: item.unitPrice,
       }))
     );
+    setAppliedTemplateName(template.name);
+
+    if (!keepPaymentType) {
+      if (template.customerId !== 'walk-in') {
+        setPaymentType('credit');
+      } else {
+        setPaymentType('cash');
+      }
+    } else {
+      if (template.customerId === 'walk-in' && paymentType === 'credit') {
+        setPaymentType('cash');
+      }
+    }
+
     setShowTemplateDropdown(false);
   };
 
@@ -157,9 +193,17 @@ export default function Billing() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">记账管理</h1>
-        <p className="text-gray-500 mt-1">录入新订单，选择服务项目和结算方式</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">记账管理</h1>
+          <p className="text-gray-500 mt-1">录入新订单，选择服务项目和结算方式</p>
+        </div>
+        {appliedTemplateName && (
+          <div className="flex items-center gap-2 px-4 py-2 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700">
+            <CheckCircle className="w-5 h-5" />
+            <span className="font-medium">已应用模板：{appliedTemplateName}</span>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -189,6 +233,7 @@ export default function Billing() {
                         onClick={() => {
                           setCustomerId(customer.id);
                           setShowCustomerDropdown(false);
+                          setAppliedTemplateName(null);
                         }}
                         className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center justify-between"
                       >
@@ -238,6 +283,9 @@ export default function Billing() {
                     <span className="font-medium">挂账</span>
                   </button>
                 </div>
+                {customerId === 'walk-in' && (
+                  <p className="text-xs text-gray-400 mt-1.5">散客只能现金结算，请先选择客户</p>
+                )}
               </div>
             </div>
           </div>
@@ -254,23 +302,38 @@ export default function Billing() {
                   <span>使用模板</span>
                   <ChevronDown className="w-4 h-4" />
                 </button>
-                {showTemplateDropdown && customerTemplates.length > 0 && (
-                  <div className="absolute right-0 z-10 w-64 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg">
-                    {customerTemplates.map((template) => (
-                      <button
-                        key={template.id}
-                        onClick={() => applyTemplate(template.id)}
-                        className="w-full px-4 py-3 text-left hover:bg-gray-50"
-                      >
-                        <p className="font-medium">{template.name}</p>
-                        <p className="text-sm text-gray-500">
-                          {template.customerName} · {template.items.length}项服务
-                        </p>
-                      </button>
-                    ))}
+                {showTemplateDropdown && allTemplates.length > 0 && (
+                  <div className="absolute right-0 z-10 w-72 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg max-h-80 overflow-auto">
+                    <div className="p-2 border-b border-gray-100 bg-gray-50">
+                      <p className="text-xs text-gray-500 font-medium">所有模板（共 {allTemplates.length} 个）</p>
+                    </div>
+                    {allTemplates.map((template) => {
+                      const isCurrentCustomer = template.customerId === customerId;
+                      return (
+                        <button
+                          key={template.id}
+                          onClick={() => applyTemplate(template.id, true)}
+                          className={`w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors ${
+                            isCurrentCustomer ? 'bg-blue-50/50' : ''
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <p className="font-medium text-gray-900">{template.name}</p>
+                            {isCurrentCustomer && (
+                              <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">
+                                当前客户
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-500 mt-0.5">
+                            {template.customerName} · {template.items.length}项服务
+                          </p>
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
-                {showTemplateDropdown && customerTemplates.length === 0 && (
+                {showTemplateDropdown && allTemplates.length === 0 && (
                   <div className="absolute right-0 z-10 w-64 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg p-4 text-center text-gray-500">
                     暂无可用模板
                   </div>
@@ -283,9 +346,9 @@ export default function Billing() {
                 <button
                   key={service.id}
                   onClick={() => addServiceItem(service.id)}
-                  className="p-4 border-2 border-gray-200 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all flex flex-col items-center gap-2"
+                  className="p-4 border-2 border-gray-200 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all flex flex-col items-center gap-2 group"
                 >
-                  <span className="text-3xl">{service.icon}</span>
+                  <span className="text-3xl group-hover:scale-110 transition-transform">{service.icon}</span>
                   <span className="font-medium">{service.name}</span>
                   <span className="text-sm text-gray-500">¥{service.price}/{service.unit}</span>
                 </button>
@@ -299,7 +362,7 @@ export default function Billing() {
                   {items.map((item) => (
                     <div
                       key={item.serviceId}
-                      className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
+                      className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
                     >
                       <div className="flex items-center gap-3">
                         <span className="text-2xl">
@@ -330,7 +393,7 @@ export default function Billing() {
                             <Plus className="w-4 h-4" />
                           </button>
                         </div>
-                        <span className="w-20 text-right font-semibold">
+                        <span className="w-24 text-right font-semibold">
                           ¥{(item.quantity * item.unitPrice).toFixed(2)}
                         </span>
                       </div>
@@ -367,7 +430,9 @@ export default function Billing() {
               </div>
               <div className="flex justify-between text-gray-600">
                 <span>结算方式</span>
-                <span>{paymentType === 'cash' ? '现金' : '挂账'}</span>
+                <span className={paymentType === 'cash' ? 'text-emerald-600' : 'text-amber-600'}>
+                  {paymentType === 'cash' ? '现金' : '挂账'}
+                </span>
               </div>
               <div className="border-t border-gray-200 pt-4">
                 <div className="flex justify-between items-center">
@@ -411,9 +476,17 @@ export default function Billing() {
               value={templateName}
               onChange={(e) => setTemplateName(e.target.value)}
               placeholder="请输入模板名称"
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 mb-4"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 mb-3"
             />
-            <div className="flex gap-3 justify-end">
+            <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-600">
+              <p>将保存以下内容为模板：</p>
+              <ul className="mt-2 space-y-1">
+                <li>• 关联客户：{selectedCustomer?.name}</li>
+                <li>• 服务项目：{items.length} 项</li>
+                <li>• 预计金额：¥{totalAmount.toFixed(2)}</li>
+              </ul>
+            </div>
+            <div className="flex gap-3 justify-end mt-4">
               <button
                 onClick={() => setSaveTemplateModal(false)}
                 className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"

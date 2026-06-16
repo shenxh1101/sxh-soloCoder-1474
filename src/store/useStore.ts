@@ -64,6 +64,7 @@ interface AppState {
   updateSupplies: (id: string, currentStock: number, threshold?: number) => void;
 
   getStats: (period: 'today' | 'week' | 'month') => Stats;
+  getOrdersByPeriod: (period: 'today' | 'week' | 'month') => Order[];
   getCustomerDebt: (customerId: string) => number;
 }
 
@@ -219,6 +220,22 @@ export const useStore = create<AppState>()(
               credit: acc.credit + (o.type === 'credit' ? o.totalAmount : 0),
             }),
             { total: 0, cash: 0, credit: 0 }
+          );
+      },
+
+      getOrdersByPeriod: (period) => {
+        const now = new Date();
+        const startOfPeriod = {
+          today: startOfDay(now),
+          week: startOfWeek(now, { weekStartsOn: 1 }),
+          month: startOfMonth(now),
+        }[period];
+
+        return get()
+          .orders.filter((o) => new Date(o.createdAt) >= startOfPeriod)
+          .sort(
+            (a, b) =>
+              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
           );
       },
 

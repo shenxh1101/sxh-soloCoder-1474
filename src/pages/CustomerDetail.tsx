@@ -9,6 +9,10 @@ import {
   Phone,
   Calendar,
   X,
+  Wallet,
+  CreditCard,
+  ListOrdered,
+  FileText,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
@@ -46,8 +50,17 @@ export default function CustomerDetail() {
     );
   }
 
-  const transactions: Transaction[] = [
+  const allTransactions: Transaction[] = [
     ...customerOrders.map((o) => ({ type: 'order' as const, data: o })),
+    ...customerPayments.map((p) => ({ type: 'payment' as const, data: p })),
+  ].sort((a, b) =>
+    new Date(b.data.createdAt).getTime() - new Date(a.data.createdAt).getTime()
+  );
+
+  const creditTransactions: Transaction[] = [
+    ...customerOrders
+      .filter((o) => o.type === 'credit')
+      .map((o) => ({ type: 'order' as const, data: o })),
     ...customerPayments.map((p) => ({ type: 'payment' as const, data: p })),
   ].sort((a, b) =>
     new Date(b.data.createdAt).getTime() - new Date(a.data.createdAt).getTime()
@@ -56,7 +69,11 @@ export default function CustomerDetail() {
   const totalCredit = customerOrders
     .filter((o) => o.type === 'credit')
     .reduce((sum, o) => sum + o.totalAmount, 0);
+  const totalCash = customerOrders
+    .filter((o) => o.type === 'cash')
+    .reduce((sum, o) => sum + o.totalAmount, 0);
   const totalPaid = customerPayments.reduce((sum, p) => sum + p.amount, 0);
+  const totalOrders = customerOrders.reduce((sum, o) => sum + o.totalAmount, 0);
 
   const handlePayment = () => {
     const amount = parseFloat(paymentAmount);
@@ -79,6 +96,119 @@ export default function CustomerDetail() {
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const renderTransactionRow = (tx: Transaction, index: number, totalCount: number) => {
+    const isOrder = tx.type === 'order';
+    const order = isOrder ? tx.data : null;
+    const payment = !isOrder ? tx.data : null;
+    const isCreditOrder = isOrder && order!.type === 'credit';
+
+    return (
+      <div
+        key={`${tx.type}-${tx.data.id}`}
+        className="p-4 hover:bg-gray-50"
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div
+              className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+                !isOrder
+                  ? 'bg-emerald-100 text-emerald-600'
+                  : isCreditOrder
+                    ? 'bg-amber-100 text-amber-600'
+                    : 'bg-blue-100 text-blue-600'
+              }`}
+            >
+              {!isOrder ? (
+                <ArrowDownLeft className="w-5 h-5" />
+              ) : (
+                <ArrowUpRight className="w-5 h-5" />
+              )}
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="font-medium text-gray-900">
+                  {!isOrder ? '还款' : '消费'}
+                </p>
+                {isOrder && (
+                  order!.type === 'cash' ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-medium rounded-full">
+                      <Wallet className="w-3 h-3" />
+                      现金
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-medium rounded-full">
+                      <CreditCard className="w-3 h-3" />
+                      挂账
+                    </span>
+                  )
+                )}
+              </div>
+              {isOrder && (
+                <>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {order!.items
+                      .map((item) => `${item.serviceName}×${item.quantity}`)
+                      .join('，')}
+                  </p>
+                  {(order!.remark || payment?.remark) && (
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      备注：{order!.remark || payment?.remark}
+                    </p>
+                  )}
+                </>
+              )}
+              {!isOrder && payment?.remark && (
+                <p className="text-xs text-gray-500 mt-0.5">
+                  备注：{payment.remark}
+                </p>
+              )}
+              <p className="text-sm text-gray-500 mt-1">
+                {format(
+                  new Date(tx.data.createdAt),
+                  'yyyy-MM-dd HH:mm',
+                  { locale: zhCN }
+                )}
+              </p>
+            </div>
+          </div>
+          <div className="text-right flex-shrink-0 ml-4">
+            <p
+              className={`font-semibold ${
+                !isOrder
+                  ? 'text-emerald-600'
+                  : isCreditOrder
+                    ? 'text-amber-600'
+                    : 'text-blue-600'
+              }`}
+            >
+              {!isOrder ? '-' : '+'}¥
+              {isOrder
+                ? order!.totalAmount.toFixed(2)
+                : payment!.amount.toFixed(2)}
+            </p>
+            {isCreditOrder && (
+              <p className="text-xs text-red-500 mt-0.5">计入欠款</p>
+            )}
+            {isOrder && !isCreditOrder && (
+              <p className="text-xs text-gray-400 mt-0.5">已收现</p>
+            )}
+            {!isOrder && (
+              <p className="text-xs text-emerald-500 mt-0.5">抵扣欠款</p>
+            )}
+          </div>
+        </div>
+        {index === totalCount - 1 && (
+          <div className="print-only mt-4 pt-4 border-t-2 border-gray-900">
+            <div className="flex justify-between text-lg font-bold">
+              <span>当前欠款余额</span>
+              <span className="text-red-600">¥{customer.debt.toFixed(2)}</span>
+            </div>
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -137,122 +267,119 @@ export default function CustomerDetail() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <p className="text-sm text-gray-500">累计挂账</p>
-          <p className="text-3xl font-bold text-amber-600 mt-2">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <p className="text-xs text-gray-500">累计消费</p>
+          <p className="text-2xl font-bold text-gray-900 mt-1.5">
+            ¥{totalOrders.toFixed(2)}
+          </p>
+        </div>
+        <div className="bg-emerald-50 rounded-xl border border-emerald-200 p-5">
+          <p className="text-xs text-emerald-700">现金结算</p>
+          <p className="text-2xl font-bold text-emerald-700 mt-1.5">
+            ¥{totalCash.toFixed(2)}
+          </p>
+        </div>
+        <div className="bg-amber-50 rounded-xl border border-amber-200 p-5">
+          <p className="text-xs text-amber-700">累计挂账</p>
+          <p className="text-2xl font-bold text-amber-700 mt-1.5">
             ¥{totalCredit.toFixed(2)}
           </p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <p className="text-sm text-gray-500">累计还款</p>
-          <p className="text-3xl font-bold text-emerald-600 mt-2">
+        <div className="bg-blue-50 rounded-xl border border-blue-200 p-5">
+          <p className="text-xs text-blue-700">累计还款</p>
+          <p className="text-2xl font-bold text-blue-700 mt-1.5">
             ¥{totalPaid.toFixed(2)}
           </p>
         </div>
-        <div className="bg-red-50 rounded-xl border border-red-200 p-6">
-          <p className="text-sm text-red-700">当前欠款</p>
-          <p className="text-3xl font-bold text-red-600 mt-2">
+        <div className="bg-red-50 rounded-xl border border-red-200 p-5 md:col-span-1 col-span-2">
+          <p className="text-xs text-red-700">当前欠款</p>
+          <p className="text-2xl font-bold text-red-700 mt-1.5">
             ¥{customer.debt.toFixed(2)}
           </p>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="p-6 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">交易明细</h3>
+      <div className="no-print">
+        <div className="inline-flex bg-white border border-gray-200 rounded-xl p-1 shadow-sm">
+          <button
+            className="px-5 py-2.5 rounded-lg flex items-center gap-2 font-medium bg-blue-600 text-white shadow-md"
+          >
+            <ListOrdered className="w-4 h-4" />
+            <span>全部交易记录</span>
+          </button>
         </div>
-        <div className="divide-y divide-gray-200">
-          {transactions.length > 0 ? (
-            transactions.map((tx, index) => (
-            <div
-              key={`${tx.type}-${tx.data.id}`}
-              className="p-4 hover:bg-gray-50"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                      tx.type === 'order'
-                        ? 'bg-amber-100 text-amber-600'
-                        : 'bg-emerald-100 text-emerald-600'
-                    }`}
-                  >
-                    {tx.type === 'order' ? (
-                      <ArrowUpRight className="w-5 h-5" />
-                    ) : (
-                      <ArrowDownLeft className="w-5 h-5" />
-                    )}
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-900">
-                      {tx.type === 'order' ? (
-                        <>
-                          挂账消费
-                          {tx.data.remark && (
-                            <span className="text-gray-500 font-normal ml-2">
-                              - {tx.data.remark}
-                            </span>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          还款
-                          {tx.data.remark && (
-                            <span className="text-gray-500 font-normal ml-2">
-                              - {tx.data.remark}
-                            </span>
-                          )}
-                        </>
-                      )}
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      {format(
-                        new Date(tx.data.createdAt),
-                        'yyyy-MM-dd HH:mm',
-                        { locale: zhCN }
-                      )}
-                    </p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p
-                    className={`font-semibold ${
-                      tx.type === 'order' ? 'text-amber-600' : 'text-emerald-600'
-                    }`}
-                  >
-                    {tx.type === 'order' ? '+' : '-'}¥
-                    {tx.type === 'order'
-                      ? tx.data.totalAmount.toFixed(2)
-                      : tx.data.amount.toFixed(2)}
-                  </p>
-                  {tx.type === 'order' && tx.data.items.length > 0 && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      {tx.data.items
-                        .map(
-                          (item) =>
-                            `${item.serviceName}×${item.quantity}`
-                        )
-                        .join('，')}
-                    </p>
-                  )}
-                </div>
-              </div>
-              {index === 0 && transactions.length > 0 && (
-                <div className="print-only mt-4 pt-4 border-t-2 border-gray-900">
-                  <div className="flex justify-between text-lg font-bold">
-                    <span>当前欠款余额</span>
-                    <span className="text-red-600">¥{customer.debt.toFixed(2)}</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))
-        ) : (
-          <div className="p-12 text-center text-gray-500">
-            暂无交易记录
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="p-5 border-b border-gray-200 bg-gray-50/50 no-print">
+            <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+              <FileText className="w-5 h-5 text-blue-500" />
+              全部交易记录（含现金）
+              <span className="ml-auto text-sm font-normal text-gray-500">
+                共 {allTransactions.length} 笔
+              </span>
+            </h3>
           </div>
-        )}
+          <div className="print-only p-4 border-b border-gray-200">
+            <h3 className="text-base font-semibold">
+              全部交易记录（共 {allTransactions.length} 笔）
+            </h3>
+          </div>
+          <div className="divide-y divide-gray-100">
+            {allTransactions.length > 0 ? (
+              allTransactions.map((tx, idx) =>
+                renderTransactionRow(tx, idx, allTransactions.length)
+              )
+            ) : (
+              <div className="p-12 text-center text-gray-500">
+                暂无交易记录
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border-2 border-amber-200 overflow-hidden">
+          <div className="p-5 border-b border-amber-200 bg-amber-50/70">
+            <h3 className="text-base font-semibold text-amber-900 flex items-center gap-2">
+              <CreditCard className="w-5 h-5 text-amber-600" />
+              挂账对账单（欠款明细）
+              <span className="ml-auto text-sm font-normal text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                打印用此表
+              </span>
+            </h3>
+            <p className="text-xs text-amber-700 mt-1">
+              仅包含挂账消费和还款记录，用于核对欠款金额
+            </p>
+          </div>
+          <div className="divide-y divide-gray-100">
+            {creditTransactions.length > 0 ? (
+              creditTransactions.map((tx, idx) =>
+                renderTransactionRow(tx, idx, creditTransactions.length)
+              )
+            ) : (
+              <div className="p-12 text-center text-gray-500">
+                暂无挂账记录
+              </div>
+            )}
+          </div>
+          {creditTransactions.length > 0 && (
+            <div className="p-5 border-t-2 border-amber-300 bg-amber-50/50 space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">累计挂账消费</span>
+                <span className="font-semibold text-amber-700">¥{totalCredit.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">累计还款</span>
+                <span className="font-semibold text-emerald-700">-¥{totalPaid.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between items-center pt-2 border-t border-amber-200 mt-2">
+                <span className="text-base font-bold text-gray-800">欠款余额</span>
+                <span className="text-2xl font-bold text-red-600">¥{customer.debt.toFixed(2)}</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -273,6 +400,14 @@ export default function CustomerDetail() {
               </button>
             </div>
             <div className="space-y-4">
+              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
+                <div className="flex justify-between items-center">
+                  <span className="text-emerald-800">当前欠款</span>
+                  <span className="text-xl font-bold text-emerald-700">
+                    ¥{customer.debt.toFixed(2)}
+                  </span>
+                </div>
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   还款金额
@@ -291,6 +426,34 @@ export default function CustomerDetail() {
                     className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                   />
                 </div>
+                {customer.debt > 0 && (
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      onClick={() => setPaymentAmount(customer.debt.toString())}
+                      className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md transition-colors"
+                    >
+                      全额还款
+                    </button>
+                    <button
+                      onClick={() => setPaymentAmount((customer.debt / 2).toFixed(2))}
+                      className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md transition-colors"
+                    >
+                      还一半
+                    </button>
+                    <button
+                      onClick={() => setPaymentAmount('100')}
+                      className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md transition-colors"
+                    >
+                      ¥100
+                    </button>
+                    <button
+                      onClick={() => setPaymentAmount('500')}
+                      className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md transition-colors"
+                    >
+                      ¥500
+                    </button>
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
